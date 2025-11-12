@@ -1,5 +1,5 @@
 <div align="center">
-<img width="675" height="675" alt="GHBanner" src="https://files.catbox.moe/c2ow3h.png"/>
+<img width="775" height="775" alt="GHBanner" src="https://files.catbox.moe/c2ow3h.png"/>
 </div>
 
 
