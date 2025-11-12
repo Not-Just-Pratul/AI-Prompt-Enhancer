@@ -4,7 +4,7 @@ An application to help users create advanced text prompts for generative AI mode
 
 ## Live Demo
 
-View your app in AI Studio: https://ai.studio/apps/drive/17I44-dWaHZitP1DSurHolUm6tVQbFJQv
+View your app in action here: https://my-ai-prompt-enhancer.vercel.app/
 
 ## Features
 
