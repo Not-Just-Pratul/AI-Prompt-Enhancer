@@ -1,0 +1,5 @@
+{
+  "name": "AI Prompt Enhancer",
+  "description": "An application to help users create advanced text prompts for generative AI models. Users can provide a basic idea, upload supplementary documents or images, and the AI will generate a detailed, structured, and effective prompt.",
+  "requestFramePermissions": []
+}

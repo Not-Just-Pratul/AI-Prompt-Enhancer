@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Prompt Enhancer | Create Better Prompts with AI</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="An application to help users create advanced text prompts for generative AI models. Users can provide a basic idea, upload supplementary documents or images, and the AI will generate a detailed, structured, and effective prompt." />
+    <meta name="keywords" content="AI prompt generator, prompt engineering, Gemini API, advanced prompts, prompt enhancer, AI writing assistant, generative AI" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="AI Prompt Enhancer" />
+    <meta property="og:description" content="Turn your simple ideas into powerful, detailed prompts for any generative AI. Upload files, select a persona, and let our AI do the heavy lifting." />
+    <meta property="og:image" content="/assets/favicon.svg" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary" />
+    <meta property="twitter:title" content="AI Prompt Enhancer" />
+    <meta property="twitter:description" content="Turn your simple ideas into powerful, detailed prompts for any generative AI. Upload files, select a persona, and let our AI do the heavy lifting." />
+    <meta property="twitter:image" content="/assets/favicon.svg" />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+    "mammoth": "https://cdn.jsdelivr.net/npm/mammoth@1.7.2/mammoth.browser.min.js",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js",
+    "pdfjs-dist": "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs",
+    "marked": "https://cdn.jsdelivr.net/npm/marked@13.0.0/lib/marked.esm.js"
+  }
+}
+</script>
+<style>
+  .marquee-container {
+    overflow: hidden;
+    position: relative;
+    width: 100%;
+    -webkit-mask-image: linear-gradient(to right, transparent, white 10%, white 90%, transparent);
+    mask-image: linear-gradient(to right, transparent, white 10%, white 90%, transparent);
+  }
+  .marquee-content {
+    display: flex;
+    width: fit-content;
+    animation: marquee 80s linear infinite;
+  }
+  .marquee-container:hover .marquee-content {
+    animation-play-state: paused;
+  }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+  .blinking-cursor {
+    display: inline-block;
+    width: 3px;
+    height: 1.1em;
+    background-color: #d1d5db; /* gray-300 */
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+    margin-left: 2px;
+  }
+  .modal-overlay {
+    transition: opacity 300ms ease-in-out;
+  }
+  .modal-content {
+    transition: transform 300ms ease-in-out, opacity 300ms ease-in-out;
+  }
+</style>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-black text-gray-300 font-sans antialiased">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
