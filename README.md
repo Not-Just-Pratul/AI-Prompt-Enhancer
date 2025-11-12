@@ -50,7 +50,7 @@ Follow these steps to set up and run the application locally.
 ### Environment Setup
 
 1.  **Obtain a Gemini API Key:**
-    If you don't have one, get your API key from [Google AI Studio](https://ai.google.dev/).
+    If you don't have one, get your API key from [Google AI Studio](https://aistudio.google.com/api-keys).
 
 2.  **Create a `.env` file:**
     In the root of your project directory, create a file named `.env` and add your Gemini API key:
