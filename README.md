@@ -109,6 +109,6 @@ Follow these steps to set up and run the application locally.
 
 Contributions are welcome! If you have suggestions for improvements or new features, please open an issue or submit a pull request.
 
-## License
+## 📝 License
 
-[Specify your license here, e.g., MIT License]
+This project is open source and available under the [MIT License](./LICENSE).
