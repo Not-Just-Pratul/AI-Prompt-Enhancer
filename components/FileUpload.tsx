@@ -1,290 +1,176 @@
-
-
 import React, { useRef, useState } from 'react';
 import { UploadedFile } from '../types';
-import { UploadIcon } from './icons/UploadIcon';
-import { TrashIcon } from './icons/TrashIcon';
-import { FileIcon } from './icons/FileIcon';
 import * as mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Configure the PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
 
 interface FileUploadProps {
   files: UploadedFile[];
-  // Fix: Update type to be a React state dispatcher, which allows passing a function.
   setFiles: React.Dispatch<React.SetStateAction<UploadedFile[]>>;
 }
 
-interface ProcessingFile {
-    id: string;
-    name: string;
-}
+interface ProcessingFile { id: string; name: string; }
 
 const MAX_FILES = 5;
-const MAX_FILE_SIZE_MB = 30;
-const ACCEPTED_FILE_TYPES = "image/*,text/plain,.docx,.xlsx,.xls,.pdf";
+const MAX_MB = 30;
+const ACCEPT = "image/*,text/plain,.docx,.xlsx,.xls,.pdf";
 
-// Helper to safely encode unicode strings to base64
-const toBase64 = (str: string): string => {
-    try {
-        return btoa(unescape(encodeURIComponent(str)));
-    } catch (e) {
-        console.error("Base64 encoding failed", e);
-        return "";
-    }
-}
-
-const createTextPreview = (text: string, maxLength: number = 120): string => {
-    const cleanedText = text.replace(/\s+/g, ' ').trim();
-    if (cleanedText.length <= maxLength) {
-        return cleanedText;
-    }
-    return cleanedText.substring(0, maxLength).trim() + '...';
+const toBase64 = (str: string) => {
+  try { return btoa(unescape(encodeURIComponent(str))); }
+  catch { return ''; }
 };
 
-const processImageOrTextFile = (file: File): Promise<UploadedFile> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-            const result = reader.result as string;
-            const base64Data = result.split(',')[1];
-            resolve({ name: file.name, type: file.type, data: base64Data, preview: undefined });
-        };
-        reader.onerror = (error) => reject(error);
-    });
+const mkPreview = (text: string, max = 100) => {
+  const t = text.replace(/\s+/g, ' ').trim();
+  return t.length <= max ? t : t.slice(0, max).trim() + '…';
 };
 
-const processDocxFile = async (file: File): Promise<UploadedFile | null> => {
-    const arrayBuffer = await file.arrayBuffer();
-    const { value } = await mammoth.extractRawText({ arrayBuffer });
-    const base64data = toBase64(value);
-    if (base64data) {
-        return { 
-            name: file.name, 
-            type: 'text/plain', 
-            data: base64data,
-            preview: createTextPreview(value) 
-        };
-    }
-    return null;
+const readImageOrText = (file: File): Promise<UploadedFile> =>
+  new Promise((res, rej) => {
+    const r = new FileReader();
+    r.readAsDataURL(file);
+    r.onload = () => res({ name: file.name, type: file.type, data: (r.result as string).split(',')[1] });
+    r.onerror = rej;
+  });
+
+const readDocx = async (file: File): Promise<UploadedFile | null> => {
+  const { value } = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+  const data = toBase64(value);
+  return data ? { name: file.name, type: 'text/plain', data, preview: mkPreview(value) } : null;
 };
 
-const processXlsxFile = async (file: File): Promise<UploadedFile | null> => {
-    const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+const readXlsx = async (file: File): Promise<UploadedFile | null> => {
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const text = wb.SheetNames.map(n => XLSX.utils.sheet_to_txt(wb.Sheets[n])).join('\n\n');
+  const data = toBase64(text);
+  return data ? { name: file.name, type: 'text/plain', data, preview: mkPreview(text) } : null;
+};
+
+const readPdf = async (file: File): Promise<UploadedFile | null> => {
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
     let text = '';
-    workbook.SheetNames.forEach(sheetName => {
-        const worksheet = workbook.Sheets[sheetName];
-        text += XLSX.utils.sheet_to_txt(worksheet) + '\n\n';
-    });
-    const base64data = toBase64(text);
-    if (base64data) {
-        return { 
-            name: file.name, 
-            type: 'text/plain', 
-            data: base64data,
-            preview: createTextPreview(text)
-        };
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map((x: any) => x.str).filter(Boolean).join(' ') + '\n\n';
     }
+    const data = toBase64(text);
+    return data ? { name: file.name, type: 'text/plain', data, preview: mkPreview(text) } : null;
+  } catch {
+    alert(`Could not extract text from ${file.name}.`);
     return null;
+  }
 };
 
-const processPdfFile = async (file: File): Promise<UploadedFile | null> => {
-    const arrayBuffer = await file.arrayBuffer();
-    try {
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        let text = '';
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items
-                .map((item: any) => item.str)
-                .filter(Boolean)
-                .join(' ');
-            text += pageText + '\n\n';
-        }
-
-        const base64data = toBase64(text);
-        if (base64data) {
-            return {
-                name: file.name,
-                type: 'text/plain',
-                data: base64data,
-                preview: createTextPreview(text)
-            };
-        }
-        return null;
-    } catch(error) {
-        console.error("Error processing PDF file:", error);
-        alert(`Could not extract text from PDF file ${file.name}. It might be an image-only PDF or corrupted.`);
-        return null;
-    }
+const processFile = (file: File): Promise<UploadedFile | null> => {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  if (file.type.startsWith('image/') || file.type === 'text/plain') return readImageOrText(file);
+  if (ext === 'docx') return readDocx(file);
+  if (ext === 'xlsx' || ext === 'xls') return readXlsx(file);
+  if (ext === 'pdf') return readPdf(file);
+  alert(`Unsupported file type: ${file.name}`);
+  return Promise.resolve(null);
 };
-
-
-const processFile = async (file: File): Promise<UploadedFile | null> => {
-    const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
-
-    if (file.type.startsWith('image/') || file.type === 'text/plain') {
-        return processImageOrTextFile(file);
-    }
-
-    if (extension === 'docx') {
-        return processDocxFile(file);
-    }
-
-    if (extension === 'xlsx' || extension === 'xls') {
-        return processXlsxFile(file);
-    }
-
-    if (extension === 'pdf') {
-        return processPdfFile(file);
-    }
-    
-    // Unsupported
-    alert(`File type of '${file.name}' is not supported for content extraction. Please use images, .txt, .docx, .xlsx, or .pdf files.`);
-    return null;
-}
 
 export const FileUpload: React.FC<FileUploadProps> = ({ files, setFiles }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [processingFiles, setProcessingFiles] = useState<ProcessingFile[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [processing, setProcessing] = useState<ProcessingFile[]>([]);
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = event.target.files;
-    if (!selectedFiles) return;
-    
-    const filesToProcess: File[] = [];
-    const newProcessingEntries: ProcessingFile[] = [];
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files;
+    if (!selected) return;
+    const toProcess: File[] = [];
+    const entries: ProcessingFile[] = [];
 
-    // Filter and collect valid files to process
-    // Fix: Replaced for...of loop with a traditional for loop to fix TypeScript type inference issues with FileList.
-    for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
-        if (files.length + processingFiles.length + filesToProcess.length >= MAX_FILES) {
-            alert(`You can only upload a maximum of ${MAX_FILES} files.`);
-            break;
-        }
-        if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-            alert(`File ${file.name} is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
-            continue;
-        }
-
-        const id = `${file.name}-${file.lastModified}-${file.size}`;
-        // Check for duplicates before adding
-        if (!files.some(f => f.name === file.name) && !processingFiles.some(p => p.id === id)) {
-            filesToProcess.push(file);
-            newProcessingEntries.push({ id, name: file.name });
-        }
+    for (let i = 0; i < selected.length; i++) {
+      const file = selected[i];
+      if (files.length + processing.length + toProcess.length >= MAX_FILES) {
+        alert(`Max ${MAX_FILES} files.`); break;
+      }
+      if (file.size > MAX_MB * 1024 * 1024) {
+        alert(`${file.name} exceeds ${MAX_MB}MB.`); continue;
+      }
+      const id = `${file.name}-${file.lastModified}-${file.size}`;
+      if (!files.some(f => f.name === file.name) && !processing.some(p => p.id === id)) {
+        toProcess.push(file);
+        entries.push({ id, name: file.name });
+      }
     }
 
-    if (newProcessingEntries.length === 0) {
-        if(fileInputRef.current) fileInputRef.current.value = "";
-        return;
-    }
-    
-    setProcessingFiles(prev => [...prev, ...newProcessingEntries]);
+    if (!entries.length) { if (inputRef.current) inputRef.current.value = ''; return; }
+    setProcessing(prev => [...prev, ...entries]);
 
-    // Process all files in parallel
-    filesToProcess.forEach(async (file, index) => {
-        const id = newProcessingEntries[index].id;
-        try {
-            const processed = await processFile(file);
-            if (processed) {
-                setFiles(prev => [...prev, processed]);
-            }
-        } catch (error) {
-            console.error("Error processing file:", error);
-            alert(`Could not process file ${file.name}.`);
-        } finally {
-            setProcessingFiles(prev => prev.filter(p => p.id !== id));
-        }
+    toProcess.forEach(async (file, idx) => {
+      const id = entries[idx].id;
+      try {
+        const result = await processFile(file);
+        if (result) setFiles(prev => [...prev, result]);
+      } catch { alert(`Could not process ${file.name}.`); }
+      finally { setProcessing(prev => prev.filter(p => p.id !== id)); }
     });
-    
-    // Clear input to allow re-uploading the same file
-    if(fileInputRef.current) {
-        fileInputRef.current.value = "";
-    }
-  };
 
-  const removeFile = (index: number) => {
-    setFiles(files.filter((_, i) => i !== index));
+    if (inputRef.current) inputRef.current.value = '';
   };
 
   return (
     <div>
       <div
-        className="border-2 border-dashed border-gray-800 rounded-lg p-6 sm:p-8 md:p-10 text-center cursor-pointer hover:border-gray-600 hover:bg-gray-900/50 transition duration-200"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => inputRef.current?.click()}
+        className="border border-dashed border-white/[0.08] hover:border-white/[0.16] rounded-lg p-5 text-center cursor-pointer hover:bg-white/[0.02] transition-all duration-200"
       >
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          className="hidden"
-          multiple
-          accept={ACCEPTED_FILE_TYPES}
-        />
-        <div className="flex flex-col items-center">
-            <UploadIcon />
-            <p className="mt-2 text-xs sm:text-sm text-gray-400">
-            <span className="font-semibold text-gray-300">Click to upload</span> or drag and drop
-            </p>
-            <p className="text-[10px] sm:text-xs text-gray-500">Images, TXT, DOCX, XLSX, PDF (Max {MAX_FILE_SIZE_MB}MB)</p>
-        </div>
+        <input ref={inputRef} type="file" className="hidden" multiple accept={ACCEPT} onChange={handleChange} />
+        <svg className="w-5 h-5 text-gray-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+        </svg>
+        <p className="text-xs text-gray-500"><span className="text-gray-300">Click to upload</span> or drag & drop</p>
+        <p className="text-[11px] text-gray-600 mt-0.5">Images, TXT, DOCX, XLSX, PDF · Max {MAX_MB}MB</p>
       </div>
-      {(files.length > 0 || processingFiles.length > 0) && (
-        <div className="mt-4 sm:mt-6 space-y-3">
-          {files.map((file, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between bg-gray-800/80 p-3 sm:p-4 rounded-lg"
-            >
-                <div className="flex items-center gap-3 overflow-hidden flex-grow min-w-0">
-                    <div className="flex-shrink-0">
-                        {file.type.startsWith('image/') && file.data ? (
-                            <img src={`data:${file.type};base64,${file.data}`} alt={file.name} className="h-8 w-8 rounded object-cover" />
-                        ) : (
-                            <FileIcon />
-                        )}
-                    </div>
-                    <div className="flex-grow overflow-hidden">
-                        <span className="text-sm text-gray-300 truncate block">{file.name}</span>
-                        {file.preview && (
-                             <p className="text-xs text-gray-400 truncate italic mt-1">
-                                "{file.preview}"
-                             </p>
-                        )}
-                    </div>
-                </div>
+
+      {(files.length > 0 || processing.length > 0) && (
+        <div className="mt-3 space-y-2">
+          {files.map((file, i) => (
+            <div key={i} className="flex items-center gap-2.5 bg-white/[0.03] border border-white/[0.06] p-2.5 rounded-lg">
+              <div className="flex-shrink-0">
+                {file.type.startsWith('image/') ? (
+                  <img src={`data:${file.type};base64,${file.data}`} alt={file.name} className="h-7 w-7 rounded object-cover" />
+                ) : (
+                  <div className="h-7 w-7 rounded bg-white/[0.05] flex items-center justify-center">
+                    <svg className="w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+              <div className="flex-grow min-w-0">
+                <p className="text-xs text-gray-300 truncate">{file.name}</p>
+                {file.preview && <p className="text-[11px] text-gray-600 truncate mt-0.5">{file.preview}</p>}
+              </div>
               <button
-                onClick={() => removeFile(index)}
-                className="text-gray-500 hover:text-gray-200 p-1 rounded-full flex-shrink-0 ml-2"
+                onClick={() => setFiles(f => f.filter((_, j) => j !== i))}
+                className="flex-shrink-0 p-1 text-gray-600 hover:text-gray-300 transition-colors"
                 aria-label={`Remove ${file.name}`}
               >
-                <TrashIcon />
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
           ))}
-          {processingFiles.map((file) => (
-            <div key={file.id} className="flex items-center justify-between bg-gray-800/60 p-3 sm:p-4 rounded-lg">
-                <div className="flex items-center gap-3 overflow-hidden flex-grow min-w-0">
-                    <div className="flex-shrink-0"><FileIcon /></div>
-                    <div className="flex-grow overflow-hidden">
-                        <span className="text-sm text-gray-400 truncate block">{file.name}</span>
-                        <p className="text-xs text-gray-500 italic mt-1">Processing...</p>
-                    </div>
-                </div>
-                <div className="flex-shrink-0 ml-2" aria-label={`Processing ${file.name}`}>
-                    <svg className="animate-spin h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                </div>
+          {processing.map(f => (
+            <div key={f.id} className="flex items-center gap-2.5 bg-white/[0.02] border border-white/[0.04] p-2.5 rounded-lg">
+              <div className="h-7 w-7 rounded bg-white/[0.04] flex items-center justify-center flex-shrink-0">
+                <svg className="animate-spin w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              </div>
+              <div className="flex-grow min-w-0">
+                <p className="text-xs text-gray-500 truncate">{f.name}</p>
+                <p className="text-[11px] text-gray-600 mt-0.5">Processing…</p>
+              </div>
             </div>
           ))}
         </div>

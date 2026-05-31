@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UploadedFile } from '../types';
 import { FileUpload } from './FileUpload';
-import { SparklesIcon } from './icons/SparklesIcon';
 import { PERSONAS } from '../data/personas';
 import { PROMPT_MODES } from '../data/promptModes';
-import { ChevronDownIcon } from './icons/ChevronDownIcon';
 
 interface InputPanelProps {
   promptIdea: string;
@@ -21,152 +19,138 @@ interface InputPanelProps {
 
 const MAX_PROMPT_LENGTH = 4000;
 
-export const InputPanel: React.FC<InputPanelProps> = ({
-  promptIdea,
-  setPromptIdea,
-  uploadedFiles,
-  setUploadedFiles,
-  persona,
-  setPersona,
-  promptMode,
-  setPromptMode,
-  onGenerate,
-  isLoading,
-}) => {
-  const [isPersonaDropdownOpen, setIsPersonaDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+const Spinner: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }) => (
+  <svg className={`animate-spin ${className}`} fill="none" viewBox="0 0 24 24">
+    <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+    <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+  </svg>
+);
 
+export const InputPanel: React.FC<InputPanelProps> = ({
+  promptIdea, setPromptIdea,
+  uploadedFiles, setUploadedFiles,
+  persona, setPersona,
+  promptMode, setPromptMode,
+  onGenerate, isLoading,
+}) => {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const selectedPersona = PERSONAS.find(p => p.key === persona) || PERSONAS[0];
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsPersonaDropdownOpen(false);
-      }
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node))
+        setDropdownOpen(false);
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [dropdownRef]);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   return (
-    <div className="bg-gray-900/80 p-4 sm:p-6 md:p-8 rounded-2xl border border-gray-800/80 shadow-2xl shadow-black/20 flex flex-col gap-6 md:gap-8 h-full">
-      
-      <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          1. Prompt Mode
-        </label>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {PROMPT_MODES.map((mode) => (
+    <div className="panel flex flex-col gap-6">
+
+      {/* Mode */}
+      <section>
+        <Label>Mode</Label>
+        <div className="grid grid-cols-4 gap-1.5 p-1 bg-white/[0.03] rounded-lg border border-white/[0.06]">
+          {PROMPT_MODES.map(mode => (
             <button
               key={mode.key}
               onClick={() => setPromptMode(mode.key)}
-              className={`text-sm py-2 px-1 rounded-md transition-colors text-center ${
-                promptMode === mode.key
-                  ? 'bg-gray-700 text-white font-semibold'
-                  : 'bg-black/50 text-gray-400 hover:bg-gray-800'
-              }`}
               title={mode.description}
+              className={`text-xs py-1.5 rounded-md font-medium transition-all duration-150 ${
+                promptMode === mode.key
+                  ? 'bg-white/10 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
             >
               {mode.name}
             </button>
           ))}
         </div>
-      </div>
-      
-      <div>
-        <label htmlFor="prompt-idea" className="block text-sm font-medium text-gray-300 mb-2">
-          2. Describe your idea
-        </label>
+      </section>
+
+      {/* Idea */}
+      <section>
+        <Label htmlFor="prompt-idea">Your idea</Label>
         <textarea
           id="prompt-idea"
           rows={5}
-          className="w-full bg-black border border-gray-700 rounded-md p-4 text-gray-200 focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition duration-200 placeholder-gray-600"
+          className="input-field resize-none"
           placeholder="e.g., A marketing campaign for a new sci-fi movie..."
           value={promptIdea}
-          onChange={(e) => setPromptIdea(e.target.value)}
+          onChange={e => setPromptIdea(e.target.value)}
           maxLength={MAX_PROMPT_LENGTH}
         />
-        <div className="text-right text-sm text-gray-500 mt-1">
-          {promptIdea.length} / {MAX_PROMPT_LENGTH}
+        <div className="text-right text-[11px] text-gray-600 mt-1">
+          {promptIdea.length}/{MAX_PROMPT_LENGTH}
         </div>
-      </div>
-      
-      <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          3. Choose a Persona (optional)
-        </label>
+      </section>
+
+      {/* Persona */}
+      <section>
+        <Label>Persona <span className="text-gray-600 font-normal">(optional)</span></Label>
         <div className="relative" ref={dropdownRef}>
           <button
             type="button"
-            onClick={() => setIsPersonaDropdownOpen(!isPersonaDropdownOpen)}
-            className="w-full bg-black border border-gray-700 rounded-md p-3 text-gray-200 flex items-center justify-between text-left focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition duration-200"
+            onClick={() => setDropdownOpen(o => !o)}
+            className="input-field w-full flex items-center justify-between text-left"
             aria-haspopup="listbox"
-            aria-expanded={isPersonaDropdownOpen}
+            aria-expanded={dropdownOpen}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 flex-shrink-0 text-gray-300">
-                <selectedPersona.IconComponent />
-              </div>
-              <span className="font-semibold">{selectedPersona.name}</span>
+            <div className="flex items-center gap-2.5">
+              <span className="w-4 h-4 text-gray-400 flex-shrink-0"><selectedPersona.IconComponent /></span>
+              <span className="text-sm text-gray-200">{selectedPersona.name}</span>
             </div>
-            <ChevronDownIcon className={`w-5 h-5 text-gray-500 transition-transform ${isPersonaDropdownOpen ? 'rotate-180' : ''}`} />
+            <svg className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
 
-          {isPersonaDropdownOpen && (
-            <div className="absolute z-20 top-full mt-2 w-full bg-gray-950 border border-gray-700 rounded-lg shadow-lg max-h-80 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-2" role="listbox">
-              {PERSONAS.map((p) => (
+          {dropdownOpen && (
+            <div className="slide-down absolute z-20 top-full mt-1.5 w-full bg-[#111] border border-white/[0.08] rounded-xl shadow-2xl max-h-72 overflow-y-auto p-1.5 grid grid-cols-2 gap-1" role="listbox">
+              {PERSONAS.map(p => (
                 <button
                   key={p.key}
-                  onClick={() => {
-                    setPersona(p.key);
-                    setIsPersonaDropdownOpen(false);
-                  }}
-                  className={`flex items-start gap-3 text-left p-3 rounded-md transition-colors w-full ${
-                    persona === p.key ? 'bg-gray-700' : 'hover:bg-gray-800'
+                  onClick={() => { setPersona(p.key); setDropdownOpen(false); }}
+                  className={`flex items-start gap-2.5 text-left p-2.5 rounded-lg transition-colors w-full ${
+                    persona === p.key ? 'bg-white/10 text-white' : 'hover:bg-white/[0.05] text-gray-300'
                   }`}
                   role="option"
                   aria-selected={persona === p.key}
                 >
-                  <div className="w-6 h-6 text-gray-400 flex-shrink-0 mt-1">
-                    <p.IconComponent />
-                  </div>
+                  <span className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5"><p.IconComponent /></span>
                   <div>
-                    <p className="font-semibold text-gray-200 text-sm">{p.name}</p>
-                    <p className="text-xs text-gray-400">{p.description}</p>
+                    <p className="text-xs font-semibold leading-tight">{p.name}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">{p.description}</p>
                   </div>
                 </button>
               ))}
             </div>
           )}
         </div>
-      </div>
+      </section>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          4. Add context (optional)
-        </label>
+      {/* Files */}
+      <section>
+        <Label>Context <span className="text-gray-600 font-normal">(optional)</span></Label>
         <FileUpload files={uploadedFiles} setFiles={setUploadedFiles} />
-      </div>
+      </section>
 
-      <div className="mt-auto">
+      {/* Generate */}
+      <div className="mt-auto pt-2">
         <button
           onClick={onGenerate}
-          disabled={isLoading || !promptIdea}
-          className="w-full flex items-center justify-center gap-2 bg-white text-black font-bold py-3 px-6 rounded-md hover:bg-gray-200 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 disabled:scale-100 disabled:bg-gray-700 disabled:text-gray-400"
+          disabled={isLoading || !promptIdea.trim()}
+          className="w-full flex items-center justify-center gap-2 bg-white text-black text-sm font-semibold py-2.5 px-5 rounded-lg hover:bg-gray-100 active:scale-[0.98] transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-white"
         >
           {isLoading ? (
-            <>
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Generating...
-            </>
+            <><Spinner /> Generating…</>
           ) : (
             <>
-              <SparklesIcon />
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
               Enhance Prompt
             </>
           )}
@@ -175,3 +159,9 @@ export const InputPanel: React.FC<InputPanelProps> = ({
     </div>
   );
 };
+
+const Label: React.FC<{ htmlFor?: string; children: React.ReactNode }> = ({ htmlFor, children }) => (
+  <label htmlFor={htmlFor} className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wider">
+    {children}
+  </label>
+);

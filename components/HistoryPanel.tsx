@@ -1,12 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { marked } from 'marked';
 import { PromptHistoryItem } from '../types';
 import { CopyIcon } from './icons/CopyIcon';
 import { CheckIcon } from './icons/CheckIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { BookmarkIcon } from './icons/BookmarkIcon';
-import { ClockIcon } from './icons/ClockIcon';
-import { StarIcon } from './icons/StarIcon';
 
 interface HistoryPanelProps {
   history: PromptHistoryItem[];
@@ -18,136 +16,131 @@ interface HistoryPanelProps {
   isSaved: (itemId: string) => boolean;
 }
 
-type HistoryTab = 'history' | 'library';
+type Tab = 'history' | 'library';
 
 const PromptCard: React.FC<{
-    item: PromptHistoryItem;
-    onLoad: (item: PromptHistoryItem) => void;
-    onDelete: (itemId: string) => void;
-    onSave: (item: PromptHistoryItem) => void;
-    onUnsave: (itemId: string) => void;
-    isSaved: boolean;
+  item: PromptHistoryItem;
+  onLoad: (item: PromptHistoryItem) => void;
+  onDelete: (id: string) => void;
+  onSave: (item: PromptHistoryItem) => void;
+  onUnsave: (id: string) => void;
+  isSaved: boolean;
 }> = ({ item, onLoad, onDelete, onSave, onUnsave, isSaved }) => {
-    const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-    const handleCopy = (text: string) => {
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-    
-    const promptHtml = marked.parse(item.prompt, { async: false }) as string;
-    const timeAgo = new Date(item.timestamp).toLocaleString();
+  const copy = () => {
+    navigator.clipboard.writeText(item.prompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-    return (
-        <div className="bg-gray-900/80 rounded-2xl border border-gray-800/80 p-4 sm:p-6 flex flex-col">
-            <div className="flex justify-between items-start gap-4 mb-4">
-                <div className="flex-grow">
-                    <p className="text-gray-400 text-sm mb-2 italic">Idea: "{item.idea.length > 100 ? item.idea.substring(0, 100) + '...' : item.idea}"</p>
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span>{timeAgo}</span>
-                        <span className="font-mono bg-gray-800 px-1.5 py-0.5 rounded">{item.mode}</span>
-                        <span className="font-mono bg-gray-800 px-1.5 py-0.5 rounded">{item.persona}</span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                        onClick={() => (isSaved ? onUnsave(item.id) : onSave(item))}
-                        className="p-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition"
-                        title={isSaved ? "Remove from library" : "Save to library"}
-                    >
-                        <BookmarkIcon isFilled={isSaved} />
-                    </button>
-                    <button
-                        onClick={() => handleCopy(item.prompt)}
-                        className="p-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition"
-                        title="Copy prompt"
-                    >
-                        {copied ? <CheckIcon /> : <CopyIcon />}
-                    </button>
-                     <button
-                        onClick={() => onDelete(item.id)}
-                        className="p-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-red-400 transition"
-                        title="Delete prompt"
-                    >
-                        <TrashIcon />
-                    </button>
-                </div>
-            </div>
-            <div className="bg-black/50 rounded-lg p-4 max-h-60 overflow-y-auto mb-4 prose prose-invert prose-sm max-w-none">
-                 <div dangerouslySetInnerHTML={{ __html: promptHtml }} />
-            </div>
-            <button
-                onClick={() => onLoad(item)}
-                className="mt-auto w-full bg-gray-700 text-white font-bold py-2 px-4 rounded-md hover:bg-gray-600 transition"
-            >
-                Load in Creator
-            </button>
+  const html = useMemo(() => marked.parse(item.prompt, { async: false }) as string, [item.prompt]);
+  const time = useMemo(() => new Date(item.timestamp).toLocaleString(), [item.timestamp]);
+  const idea = item.idea.length > 90 ? item.idea.slice(0, 90) + '…' : item.idea;
+
+  return (
+    <div className="panel flex flex-col gap-3 fade-up">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-grow min-w-0">
+          <p className="text-xs text-gray-400 italic truncate">"{idea}"</p>
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <span className="text-[11px] text-gray-600">{time}</span>
+            <span className="tag">{item.mode}</span>
+            <span className="tag">{item.persona}</span>
+          </div>
         </div>
-    );
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <IconBtn onClick={() => isSaved ? onUnsave(item.id) : onSave(item)} title={isSaved ? 'Remove from library' : 'Save'}>
+            <BookmarkIcon isFilled={isSaved} />
+          </IconBtn>
+          <IconBtn onClick={copy} title="Copy">
+            {copied ? <CheckIcon /> : <CopyIcon />}
+          </IconBtn>
+          <IconBtn onClick={() => onDelete(item.id)} title="Delete" danger>
+            <TrashIcon />
+          </IconBtn>
+        </div>
+      </div>
+
+      <div className="bg-white/[0.02] border border-white/[0.05] rounded-lg p-3.5 max-h-48 overflow-y-auto prose prose-invert prose-xs max-w-none prose-p:text-gray-400 prose-headings:text-gray-300">
+        <div dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+
+      <button
+        onClick={() => onLoad(item)}
+        className="w-full text-xs font-medium text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] py-2 rounded-lg transition-colors"
+      >
+        Load in editor
+      </button>
+    </div>
+  );
 };
 
-export const HistoryPanel: React.FC<HistoryPanelProps> = (props) => {
-  const [activeTab, setActiveTab] = useState<HistoryTab>('history');
-  
-  const displayedItems = activeTab === 'history' ? props.history : props.library;
+const IconBtn: React.FC<{ onClick: () => void; title?: string; danger?: boolean; children: React.ReactNode }> = ({ onClick, title, danger, children }) => (
+  <button
+    onClick={onClick}
+    title={title}
+    className={`p-1.5 rounded-md transition-colors ${danger ? 'text-gray-600 hover:text-red-400 hover:bg-red-950/30' : 'text-gray-500 hover:text-gray-200 hover:bg-white/[0.06]'}`}
+  >
+    {children}
+  </button>
+);
 
-  const renderEmptyState = () => {
-    if (activeTab === 'history') {
-        return (
-            <div className="text-center text-gray-600 flex flex-col items-center justify-center p-12 bg-gray-900/50 rounded-2xl border-2 border-dashed border-gray-800">
-                <ClockIcon />
-                <p className="mt-4 text-lg font-semibold text-gray-500">No History Yet</p>
-                <p className="text-gray-600">Prompts you generate will appear here automatically.</p>
-            </div>
-        );
-    }
-     if (activeTab === 'library') {
-        return (
-            <div className="text-center text-gray-600 flex flex-col items-center justify-center p-12 bg-gray-900/50 rounded-2xl border-2 border-dashed border-gray-800">
-                <StarIcon />
-                <p className="mt-4 text-lg font-semibold text-gray-500">Your Library is Empty</p>
-                <p className="text-gray-600">Save your favorite prompts from your history to find them here later.</p>
-            </div>
-        );
-    }
-    return null;
-  }
+const EmptyState: React.FC<{ tab: Tab }> = ({ tab }) => (
+  <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-white/[0.06] rounded-2xl">
+    <div className="w-10 h-10 rounded-full bg-white/[0.04] flex items-center justify-center mb-3">
+      {tab === 'history' ? (
+        <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ) : (
+        <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+        </svg>
+      )}
+    </div>
+    <p className="text-sm text-gray-500">{tab === 'history' ? 'No history yet' : 'Library is empty'}</p>
+    <p className="text-xs text-gray-600 mt-1">{tab === 'history' ? 'Generated prompts appear here.' : 'Save prompts from history.'}</p>
+  </div>
+);
+
+export const HistoryPanel: React.FC<HistoryPanelProps> = (props) => {
+  const [tab, setTab] = useState<Tab>('history');
+  const items = tab === 'history' ? props.history : props.library;
 
   return (
     <div>
-        <div className="flex items-center gap-2 mb-6">
-            <button
-                onClick={() => setActiveTab('history')}
-                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'history' ? 'bg-gray-700 text-white' : 'bg-gray-800/80 text-gray-400 hover:bg-gray-700/80'}`}
-            >
-                History ({props.history.length})
-            </button>
-            <button
-                onClick={() => setActiveTab('library')}
-                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'library' ? 'bg-gray-700 text-white' : 'bg-gray-800/80 text-gray-400 hover:bg-gray-700/80'}`}
-            >
-                Library ({props.library.length})
-            </button>
-        </div>
+      <div className="flex items-center gap-1 mb-6 p-1 bg-white/[0.03] border border-white/[0.06] rounded-lg w-fit">
+        {(['history', 'library'] as Tab[]).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${
+              tab === t ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            {t} ({(t === 'history' ? props.history : props.library).length})
+          </button>
+        ))}
+      </div>
 
-        {displayedItems.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {displayedItems.map(item => (
-                    <PromptCard 
-                        key={item.id}
-                        item={item}
-                        onLoad={props.onLoad}
-                        onDelete={props.onDelete}
-                        onSave={props.onSave}
-                        onUnsave={props.onUnsave}
-                        isSaved={props.isSaved(item.id)}
-                    />
-                ))}
-            </div>
-        ) : (
-            renderEmptyState()
-        )}
+      {items.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {items.map(item => (
+            <PromptCard
+              key={item.id}
+              item={item}
+              onLoad={props.onLoad}
+              onDelete={props.onDelete}
+              onSave={props.onSave}
+              onUnsave={props.onUnsave}
+              isSaved={props.isSaved(item.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <EmptyState tab={tab} />
+      )}
     </div>
   );
 };

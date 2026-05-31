@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { UploadedFile, PromptHistoryItem, AnalysisFeedback } from './types';
 import { InputPanel } from './components/InputPanel';
 import { OutputPanel } from './components/OutputPanel';
-import { generateAdvancedPrompt, generateLuckyPrompt, analyzePrompt } from './services/geminiService';
+import { generateAdvancedPrompt, generateLuckyPrompt, analyzePrompt } from './services/openRouterService';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { ExamplePrompts } from './components/ExamplePrompts';
@@ -13,63 +13,50 @@ import { FeedbackModal } from './components/FeedbackModal';
 
 type AppTab = 'create' | 'history';
 
-const App: React.FC = () => {
-  const [promptIdea, setPromptIdea] = useState<string>('');
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [persona, setPersona] = useState<string>('default');
-  const [promptMode, setPromptMode] = useState<string>('detailed');
-  
-  const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isFeelingLuckyLoading, setIsFeelingLuckyLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+const HISTORY_KEY = 'promptHistory';
+const LIBRARY_KEY = 'promptLibrary';
 
-  const [isRefining, setIsRefining] = useState<boolean>(false);
+function loadFromStorage<T>(key: string): T[] {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+const App: React.FC = () => {
+  const [promptIdea, setPromptIdea] = useState('');
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [persona, setPersona] = useState('default');
+  const [promptMode, setPromptMode] = useState('detailed');
+
+  const [generatedPrompt, setGeneratedPrompt] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isFeelingLuckyLoading, setIsFeelingLuckyLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isRefining, setIsRefining] = useState(false);
 
   const [activeTab, setActiveTab] = useState<AppTab>('create');
-  const [history, setHistory] = useState<PromptHistoryItem[]>([]);
-  const [library, setLibrary] = useState<PromptHistoryItem[]>([]);
+  const [history, setHistory] = useState<PromptHistoryItem[]>(() => loadFromStorage(HISTORY_KEY));
+  const [library, setLibrary] = useState<PromptHistoryItem[]>(() => loadFromStorage(LIBRARY_KEY));
 
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AnalysisFeedback | null>(null);
-  const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState<boolean>(false);
+  const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
 
-  useEffect(() => {
-    try {
-      const storedHistory = localStorage.getItem('promptHistory');
-      if (storedHistory) {
-        setHistory(JSON.parse(storedHistory));
-      }
-      const storedLibrary = localStorage.getItem('promptLibrary');
-      if (storedLibrary) {
-        setLibrary(JSON.parse(storedLibrary));
-      }
-    } catch (e) {
-      console.error("Failed to load from localStorage", e);
-    }
+  const historyRef = useRef(history);
+  useEffect(() => { historyRef.current = history; }, [history]);
+
+  const saveHistory = useCallback((next: PromptHistoryItem[]) => {
+    setHistory(next);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
   }, []);
 
-  const saveHistory = (newHistory: PromptHistoryItem[]) => {
-    setHistory(newHistory);
-    localStorage.setItem('promptHistory', JSON.stringify(newHistory));
-  };
+  const handleGenerate = useCallback(async (currentIdea: string, isRefinement = false) => {
+    if (!currentIdea.trim()) { setError('Please enter a prompt idea.'); return; }
 
-  const saveLibrary = (newLibrary: PromptHistoryItem[]) => {
-    setLibrary(newLibrary);
-    localStorage.setItem('promptLibrary', JSON.stringify(newLibrary));
-  };
-
-  const handleGenerate = useCallback(async (currentIdea: string, isRefinement: boolean = false) => {
-    if (!currentIdea.trim()) {
-      setError('Please enter a prompt idea.');
-      return;
-    }
-
-    if (isRefinement) {
-        setIsRefining(true);
-    } else {
-        setIsLoading(true);
-    }
+    isRefinement ? setIsRefining(true) : setIsLoading(true);
     setError(null);
     setGeneratedPrompt('');
 
@@ -80,185 +67,180 @@ const App: React.FC = () => {
         fullResponse += chunk;
         setGeneratedPrompt(fullResponse);
       }
-      
-      // Add to history after successful generation
-      const newHistoryItem: PromptHistoryItem = {
-        id: crypto.randomUUID(),
+
+      const newItem: PromptHistoryItem = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         idea: currentIdea,
         prompt: fullResponse,
         persona,
         mode: promptMode,
         timestamp: Date.now(),
       };
-      saveHistory([newHistoryItem, ...history]);
-
+      saveHistory([newItem, ...historyRef.current]);
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-      setError(`Failed to generate prompt. ${errorMessage}`);
-      console.error(e);
+      setError(`Failed to generate prompt. ${e instanceof Error ? e.message : 'An unknown error occurred.'}`);
     } finally {
-      if (isRefinement) {
-        setIsRefining(false);
-      }
-      else {
-        setIsLoading(false);
-      }
+      isRefinement ? setIsRefining(false) : setIsLoading(false);
     }
-  }, [uploadedFiles, persona, promptMode, history]);
+  }, [uploadedFiles, persona, promptMode, saveHistory]);
 
-  const handleInitialGenerate = () => handleGenerate(promptIdea);
+  const handleInitialGenerate = useCallback(() => handleGenerate(promptIdea), [handleGenerate, promptIdea]);
 
-  const handleRefine = (refinementText: string) => {
-    const refinementIdea = `Here is the prompt to refine:\n---\n${generatedPrompt}\n---\nApply this instruction: "${refinementText}"`;
-    handleGenerate(refinementIdea, true);
-  };
+  const handleRefine = useCallback((refinementText: string) => {
+    handleGenerate(
+      `Here is the prompt to refine:\n---\n${generatedPrompt}\n---\nApply this instruction: "${refinementText}"`,
+      true,
+    );
+  }, [handleGenerate, generatedPrompt]);
 
-
-  const handleSelectExample = (example: ExamplePrompt) => {
+  const handleSelectExample = useCallback((example: ExamplePrompt) => {
     setPromptIdea(example.text);
     setPersona(example.persona);
     setActiveTab('create');
-    const inputElement = document.getElementById('prompt-idea');
-    if (inputElement) {
-      inputElement.focus();
-    }
-  };
+    document.getElementById('prompt-idea')?.focus();
+  }, []);
 
-  const handleFeelingLucky = async () => {
+  const handleFeelingLucky = useCallback(async () => {
     setIsFeelingLuckyLoading(true);
     setError(null);
     try {
-      const luckyPrompt = await generateLuckyPrompt();
-      handleSelectExample(luckyPrompt);
-    } catch(e) {
-       const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-      setError(errorMessage);
+      const lucky = await generateLuckyPrompt();
+      handleSelectExample(lucky);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'An unknown error occurred.');
     } finally {
       setIsFeelingLuckyLoading(false);
     }
-  };
+  }, [handleSelectExample]);
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = useCallback(async () => {
     if (!generatedPrompt) return;
     setIsAnalyzing(true);
     setAnalysisResult(null);
     setError(null);
     try {
-        const result = await analyzePrompt(generatedPrompt);
-        setAnalysisResult(result);
-        setIsAnalysisModalOpen(true);
-    } catch(e) {
-        const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-        setError(`Analysis failed. ${errorMessage}`);
+      const result = await analyzePrompt(generatedPrompt);
+      setAnalysisResult(result);
+      setIsAnalysisModalOpen(true);
+    } catch (e) {
+      setError(`Analysis failed. ${e instanceof Error ? e.message : 'An unknown error occurred.'}`);
     } finally {
-        setIsAnalyzing(false);
+      setIsAnalyzing(false);
     }
-  };
+  }, [generatedPrompt]);
 
-  const handleSaveToLibrary = (item: PromptHistoryItem) => {
-    if (!library.some(libItem => libItem.id === item.id)) {
-        saveLibrary([item, ...library]);
-    }
-  };
+  const handleSaveToLibrary = useCallback((item: PromptHistoryItem) => {
+    setLibrary((prev: PromptHistoryItem[]) => {
+      if (prev.some((l: PromptHistoryItem) => l.id === item.id)) return prev;
+      const next = [item, ...prev];
+      localStorage.setItem(LIBRARY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
-  const handleRemoveFromLibrary = (itemId: string) => {
-    saveLibrary(library.filter(item => item.id !== itemId));
-  };
-  
-  const handleLoadFromHistory = (item: PromptHistoryItem) => {
+  const handleRemoveFromLibrary = useCallback((itemId: string) => {
+    setLibrary((prev: PromptHistoryItem[]) => {
+      const next = prev.filter((i: PromptHistoryItem) => i.id !== itemId);
+      localStorage.setItem(LIBRARY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleLoadFromHistory = useCallback((item: PromptHistoryItem) => {
     setPromptIdea(item.idea);
     setGeneratedPrompt(item.prompt);
     setPersona(item.persona);
     setPromptMode(item.mode);
-    setUploadedFiles([]); // Files are not persisted, so we clear them
+    setUploadedFiles([]);
     setActiveTab('create');
-  }
+  }, []);
 
-  const handleDeleteFromHistory = (itemId: string) => {
-    saveHistory(history.filter(item => item.id !== itemId));
-    // Also remove from library if it exists there
+  const handleDeleteFromHistory = useCallback((itemId: string) => {
+    saveHistory(historyRef.current.filter((i: PromptHistoryItem) => i.id !== itemId));
     handleRemoveFromLibrary(itemId);
-  };
+  }, [saveHistory, handleRemoveFromLibrary]);
 
+  const handleSaveLatest = useCallback(() => {
+    const latest = historyRef.current[0];
+    if (latest) handleSaveToLibrary(latest);
+  }, [handleSaveToLibrary]);
+
+  const isLatestSaved = history[0] ? library.some((i: PromptHistoryItem) => i.id === history[0].id) : false;
+  const isSaved = useCallback((id: string) => library.some((i: PromptHistoryItem) => i.id === id), [library]);
+  const closeModal = useCallback(() => setIsAnalysisModalOpen(false), []);
 
   return (
-    <div className="flex flex-col min-h-screen bg-black text-gray-300">
+    <div className="flex flex-col min-h-screen bg-[#080808] text-gray-300">
       <Header />
       <main className="flex-grow container mx-auto px-4 py-6 sm:px-6 md:py-12 max-w-screen-xl">
-        
-        <div className="border-b border-gray-800 mb-6 sm:mb-8">
-            <nav className="flex -mb-px space-x-6 sm:space-x-8" aria-label="Tabs">
-                <button
-                    onClick={() => setActiveTab('create')}
-                    className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm sm:text-base transition-colors ${activeTab === 'create' ? 'border-b-gray-200 text-gray-200' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-500'}`}
-                >
-                    Create Prompt
-                </button>
-                <button
-                    onClick={() => setActiveTab('history')}
-                    className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm sm:text-base transition-colors ${activeTab === 'history' ? 'border-b-gray-200 text-gray-200' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-500'}`}
-                >
-                    History & Library
-                </button>
-            </nav>
+
+        <div className="flex items-center gap-1 mb-8 p-1 bg-white/[0.03] border border-white/[0.06] rounded-lg w-fit">
+          {(['create', 'history'] as AppTab[]).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
+                activeTab === tab ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              {tab === 'create' ? 'Create' : 'History & Library'}
+            </button>
+          ))}
         </div>
-        
+
         {activeTab === 'create' && (
-            <>
-                <ExamplePrompts onSelectExample={handleSelectExample} onFeelingLucky={handleFeelingLucky} isFeelingLuckyLoading={isFeelingLuckyLoading} />
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-start">
-                    <InputPanel
-                        promptIdea={promptIdea}
-                        setPromptIdea={setPromptIdea}
-                        uploadedFiles={uploadedFiles}
-                        setUploadedFiles={setUploadedFiles}
-                        persona={persona}
-                        setPersona={setPersona}
-                        promptMode={promptMode}
-                        setPromptMode={setPromptMode}
-                        onGenerate={handleInitialGenerate}
-                        isLoading={isLoading}
-                    />
-                    <div className="flex flex-col gap-8 lg:gap-12">
-                        <OutputPanel
-                            generatedPrompt={generatedPrompt}
-                            isLoading={isLoading}
-                            error={error}
-                            onAnalyze={handleAnalyze}
-                            isAnalyzing={isAnalyzing}
-                            onSave={() => {
-                                const latestPrompt = history[0];
-                                if(latestPrompt) handleSaveToLibrary(latestPrompt);
-                            }}
-                            isSavedToLibrary={history[0] && library.some(item => item.id === history[0].id)}
-                        />
-                         {generatedPrompt && !isLoading && !isRefining && (
-                            <RefinementPanel onRefine={handleRefine} isLoading={isRefining} />
-                        )}
-                    </div>
-                </div>
-            </>
+          <>
+            <ExamplePrompts
+              onSelectExample={handleSelectExample}
+              onFeelingLucky={handleFeelingLucky}
+              isFeelingLuckyLoading={isFeelingLuckyLoading}
+            />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-start">
+              <InputPanel
+                promptIdea={promptIdea}
+                setPromptIdea={setPromptIdea}
+                uploadedFiles={uploadedFiles}
+                setUploadedFiles={setUploadedFiles}
+                persona={persona}
+                setPersona={setPersona}
+                promptMode={promptMode}
+                setPromptMode={setPromptMode}
+                onGenerate={handleInitialGenerate}
+                isLoading={isLoading}
+              />
+              <div className="flex flex-col gap-8 lg:gap-12">
+                <OutputPanel
+                  generatedPrompt={generatedPrompt}
+                  isLoading={isLoading}
+                  error={error}
+                  onAnalyze={handleAnalyze}
+                  isAnalyzing={isAnalyzing}
+                  onSave={handleSaveLatest}
+                  isSavedToLibrary={isLatestSaved}
+                />
+                {generatedPrompt && !isLoading && (
+                  <RefinementPanel onRefine={handleRefine} isLoading={isRefining} />
+                )}
+              </div>
+            </div>
+          </>
         )}
 
         {activeTab === 'history' && (
-            <HistoryPanel
-                history={history}
-                library={library}
-                onLoad={handleLoadFromHistory}
-                onDelete={handleDeleteFromHistory}
-                onSave={handleSaveToLibrary}
-                onUnsave={handleRemoveFromLibrary}
-                isSaved={(itemId) => library.some(item => item.id === itemId)}
-            />
+          <HistoryPanel
+            history={history}
+            library={library}
+            onLoad={handleLoadFromHistory}
+            onDelete={handleDeleteFromHistory}
+            onSave={handleSaveToLibrary}
+            onUnsave={handleRemoveFromLibrary}
+            isSaved={isSaved}
+          />
         )}
-
       </main>
       <Footer />
       {isAnalysisModalOpen && analysisResult && (
-        <FeedbackModal 
-            result={analysisResult} 
-            onClose={() => setIsAnalysisModalOpen(false)} 
-        />
+        <FeedbackModal result={analysisResult} onClose={closeModal} />
       )}
     </div>
   );
